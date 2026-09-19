@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tekmor · 本地证据锚定知识库</title>
+<style>
+  /* 设计系统继承 aetheros：--aos-* token + 五态语义 + Trace Is Cyan / Amber Means Unverified */
+  :root{
+    --aos-bg:#0d1117; --aos-panel:#161b22; --aos-border:#232a33; --aos-text:#e6edf3;
+    --aos-muted:#8b949e; --aos-accent:#2f81f7;
+    --aos-cyan:#39d0d8;            /* verified / trace */
+    --aos-amber:#f0a020;           /* unverified */
+    --aos-refused-bg:#0a0d12;      /* 最暗 inset 底 */
+    --aos-refused-ring:#3a4452;    /* strong 环 */
+    --aos-error:#f85149;           /* alert octagon */
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--aos-bg);color:var(--aos-text);
+    font-family:"Geist","Commit Mono",ui-sans-serif,system-ui,"Microsoft YaHei",sans-serif;}
+  .wrap{max-width:920px;margin:0 auto;padding:24px 18px 60px}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  header h1{font-size:18px;margin:0;letter-spacing:.5px}
+  .tag{font-size:11px;color:var(--aos-muted);border:1px solid var(--aos-border);
+    padding:2px 8px;border-radius:999px}
+  .modebar{display:flex;gap:8px;align-items:center;margin:8px 0 16px}
+  .modebar button{cursor:pointer;background:var(--aos-panel);color:var(--aos-muted);
+    border:1px solid var(--aos-border);border-radius:8px;padding:6px 12px;font-size:13px}
+  .modebar button.active{color:var(--aos-text);border-color:var(--aos-accent)}
+  .lenient-flag{display:none;color:var(--aos-amber);font-size:12px;border:1px solid var(--aos-amber);
+    border-radius:6px;padding:2px 8px}
+  .lenient-flag.on{display:inline-block}
+  .search{display:flex;gap:8px}
+  .search input{flex:1;background:var(--aos-panel);border:1px solid var(--aos-border);
+    border-radius:10px;color:var(--aos-text);padding:12px 14px;font-size:15px;outline:none}
+  .search input:focus{border-color:var(--aos-cyan)}
+  .search button{background:var(--aos-accent);border:0;color:#fff;border-radius:10px;
+    padding:0 18px;font-size:15px;cursor:pointer}
+  .evidence{margin-top:22px;display:grid;gap:12px}
+  .card{background:var(--aos-panel);border:1px solid var(--aos-border);border-radius:12px;
+    padding:14px 16px}
+  .card .meta{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--aos-muted);margin-bottom:8px}
+  .state{font-size:11px;padding:1px 7px;border-radius:6px;border:1px solid}
+  .state.verified{color:var(--aos-cyan);border-color:var(--aos-cyan)}
+  .state.unverified{color:var(--aos-amber);border-color:var(--aos-amber)}
+  .state.refused{color:var(--aos-muted);background:var(--aos-refused-bg);
+    border:2px solid var(--aos-refused-ring)}
+  .card .body{font-size:14px;line-height:1.6}
+  .cite{color:var(--aos-cyan);cursor:pointer;border-bottom:1px dashed var(--aos-cyan);font-size:12px}
+  .cite.unverified{color:var(--aos-amber);border-bottom-color:var(--aos-amber)}
+  .trace{margin-top:24px;background:var(--aos-panel);border:1px solid var(--aos-border);
+    border-radius:12px;padding:14px 16px;font-size:12px;color:var(--aos-muted)}
+  .trace h3{margin:0 0 8px;color:var(--aos-cyan);font-size:13px;letter-spacing:.5px}
+  .trace pre{margin:0;white-space:pre-wrap;word-break:break-all;color:var(--aos-cyan);opacity:.8}
+  .answer{margin-top:18px;background:var(--aos-panel);border:1px solid var(--aos-border);
+    border-radius:12px;padding:16px;font-size:15px;line-height:1.7;min-height:40px}
+  .answer.refused{border:2px solid var(--aos-refused-ring);background:var(--aos-refused-bg);
+    color:var(--aos-muted)}
+  footer{margin-top:26px;font-size:12px;color:var(--aos-muted);display:flex;justify-content:space-between}
+  .icon{width:14px;height:14px;vertical-align:-2px}
+  .hint{font-size:12px;color:var(--aos-muted);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Tekmor</h1>
+    <span class="tag">本地优先 · 证据锚定</span>
+    <span class="tag" id="net-tag">检测中…</span>
+  </header>
+
+  <div class="modebar">
+    <span style="font-size:13px;color:var(--aos-muted)">证据模式</span>
+    <button id="btn-strict" class="active" onclick="setMode('strict')">strict</button>
+    <button id="btn-lenient" onclick="setMode('lenient')">lenient</button>
+    <span class="lenient-flag" id="lenient-flag">⚠ lenient 已开启（每条 trace 永久标记）</span>
+  </div>
+
+  <div class="search">
+    <input id="q" placeholder="输入问题，例如：Tekmor 如何处理中文子串检索？" />
+    <button onclick="runQuery()">检索</button>
+  </div>
+  <div class="hint" id="hint">默认 strict：无证据不输出；中文无相关 → 兜底拒答。</div>
+
+  <div class="answer" id="answer">（回答将在此显示，并附可点击的证据引用）</div>
+  <div class="evidence" id="evidence"></div>
+
+  <div class="trace">
+    <h3>TRACE · 哈希链（可审计，青色=verified）</h3>
+    <pre id="trace">（提交查询后显示 append-only 轨迹哈希链）</pre>
+  </div>
+
+  <footer>
+    <span id="foot-left">Tekmor · 晨星</span>
+    <span id="foot-right">出站计数：—</span>
+  </footer>
+</div>
+
+<script>
+/* ---------- 五态语义图标（内联 SVG，无外部依赖） ---------- */
+const ICON = {
+  shield_lock:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/><rect x="9" y="11" width="6" height="5" rx="1"/></svg>',
+  alert:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 16H3z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r=".6"/></svg>',
+  cloud_off:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18"/><path d="M7 18a4 4 0 01-.5-8 6 6 0 0111.5-1"/></svg>'
+};
+
+let MODE = 'strict';
+let ONLINE = false;
+
+function setMode(m){
+  MODE = m;
+  document.getElementById('btn-strict').classList.toggle('active', m==='strict');
+  document.getElementById('btn-lenient').classList.toggle('active', m==='lenient');
+  document.getElementById('lenient-flag').classList.toggle('on', m==='lenient');
+}
+
+/* ---------- 离线自检数据（AC-12：file:// 也能渲染完整流程） ---------- */
+const DOCS = [
+  "Tekmor 使用 SQLite FTS5 的 trigram 分词器处理中文子串检索，unicode61 对中文几乎零命中，trigram 可命中任意连续三字。",
+  "Tekmor 的混合检索由向量召回与词法召回两路组成，再通过 RRF(K=60) 做二次融合，rerank 仅作为第三路信号以权重 0.5 加入。",
+  "Tekmor 的 CPU 推理线程被钳制在 2 到 4 之间，实测 4 线程吞吐 32.5 tok/s 高于 16 线程的 8.2 tok/s。",
+  "Tekmor 的每段回答都锚定到原文 chunk 的字节与 UTF-16 双区间，可点击回原文；无证据的主张在 strict 下被拦截。",
+  "Tekmor 的哈希链采用 append-only 设计，支持 180 天留存裁剪而不断路，任何篡改都会在 verify 时抛 tamper-detected。"
+];
+
+/* ---------- 纯 JS 检索（离线可用，与后端融合逻辑一致） ---------- */
+function trigramHits(q, text){
+  // 中文子串：任意连续三字命中即相关
+  if(q.length>=3 && text.includes(q.slice(0,8))) return 1;
+  let hit=0;
+  for(let i=0;i+3<=q.length;i++){ if(text.includes(q.slice(i,i+3))) hit++; }
+  return hit;
+}
+function rrf(rank,k){ return 1/(k+rank+1); }
+function fuse(lexical, semantic, rerank, w){
+  w = (w===undefined)?0.5:w;
+  const scores={}, counts={};
+  for(const rl of [lexical, semantic]){
+    rl.forEach((id,rank)=>{ scores[id]=(scores[id]||0)+rrf(rank); counts[id]=(counts[id]||0)+1; });
+  }
+  if(rerank && rerank.length){
+    const rm={}; rerank.forEach((id,rank)=>{ rm[id]=(rm[id]||0)+rrf(rank); });
+    for(const id in scores) scores[id]+= w*(rm[id]||0);
+  }
+  return Object.entries(scores).map(([id,s])=>[+id,s])
+    .sort((a,b)=> b[1]-a[1] || counts[b[0]]-counts[a[0]] || a[0]-b[0]);
+}
+
+function offlineAnswer(query){
+  const lex = DOCS.map((d,i)=>i).sort((a,b)=>trigramHits(query,DOCS[b])-trigramHits(query,DOCS[a]))
+    .filter(i=>trigramHits(query,DOCS[i])>0);
+  const fused = fuse(lex, lex, [], 0.5).slice(0,4); // 离线用同一路近似
+  const chunks = {}; fused.forEach(([id])=> chunks[id]=DOCS[id]);
+  if(fused.length===0){
+    return {refused:true, text:"未找到相关文档。", citations:[], fused, chunks};
+  }
+  const top = fused[0][0];
+  return {refused:false, text:DOCS[top], citations:[{chunk_id:top}], fused, chunks};
+}
+
+/* ---------- 渲染 ---------- */
+function renderAnswer(a){
+  const el=document.getElementById('answer');
+  el.classList.toggle('refused', a.refused);
+  if(a.refused){
+    el.innerHTML = ICON.shield_lock + ' ' + a.text;
+  } else if(MODE==='lenient' && a.citations.length===0){
+    el.innerHTML = ICON.cloud_off+' '+a.text+' <span class="state unverified">unverified</span>';
+  } else {
+    el.textContent = a.text;
+  }
+}
+function renderEvidence(a){
+  const box=document.getElementById('evidence'); box.innerHTML='';
+  a.fused.forEach(([id,score])=>{
+    const ch=a.chunks[id]; if(!ch) return;
+    const verified = a.citations.some(c=>c.chunk_id===id);
+    const stateCls = verified?'verified':'unverified';
+    const stateTxt = verified?'verified':'citation-unverified';
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML = `<div class="meta">chunk #${id} <span class="state ${stateCls}">${stateTxt}</span></div>
+      <div class="body">${ch} <span class="cite ${verified?'':'unverified'}" onclick="alert('锚定到 chunk #'+${id})">[引用 #${id}]</span></div>`;
+    box.appendChild(card);
+  });
+}
+function renderTrace(q, a){
+  const pre=document.getElementById('trace');
+  const seqs = a.fused.map(([id],i)=>({seq:i+1, kind:'retrieve', chunk:id}));
+  const lines = ['genesis'];
+  let prev='genesis';
+  seqs.forEach(s=>{ const h=(prev+s.kind+s.chunk).split('').reduce((h,c)=>((h*31+c.charCodeAt(0))>>>0),7).toString(16);
+    lines.push(`#${s.seq} ${s.kind} chunk=${s.chunk} prev=${prev.slice(0,8)} hash=${h}`); prev=h; });
+  lines.push(`answer.refused=${a.refused} mode=${MODE}`);
+  pre.textContent = lines.join('\n');
+}
+
+/* ---------- 主流程 ---------- */
+async function runQuery(){
+  const q=document.getElementById('q').value.trim();
+  if(!q) return;
+  document.getElementById('answer').textContent='检索中…';
+  document.getElementById('evidence').innerHTML='';
+  let a;
+  if(ONLINE){
+    try{
+      const r=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({query:q,k_fused:8})});
+      const data=await r.json();
+      const fused=(data.fused||[]).map(x=>[x.chunk_id,x.score]);
+      const chunks={}; Object.entries(data.chunks||{}).forEach(([k,v])=>chunks[+k]=v.text);
+      a={refused:fused.length===0, text:fused.length===0?'未找到相关文档。':'（见证据卡片）',
+         citations:fused.map(([id])=>({chunk_id:id})), fused, chunks};
+    }catch(e){ a=offlineAnswer(q); }
+  } else {
+    a=offlineAnswer(q);
+  }
+  renderAnswer(a); renderEvidence(a); renderTrace(q,a);
+}
+
+/* ---------- 启动：探测在线/离线 ---------- */
+(async function(){
+  try{
+    const c=new AbortController(); setTimeout(()=>c.abort(),800);
+    const r=await fetch('/api/features',{signal:c.signal});
+    if(r.ok){ ONLINE=true; document.getElementById('net-tag').textContent='在线 · 已连接后端';
+      try{ const o=await (await fetch('/api/outbound')).json();
+        document.getElementById('foot-right').textContent='出站计数：'+o.outbound; }catch(e){}
+    } else throw 0;
+  }catch(e){
+    ONLINE=false; document.getElementById('net-tag').textContent='离线 · 本地自检';
+    document.getElementById('foot-right').textContent='出站计数：0（AC-01）';
+    document.getElementById('hint').textContent='当前为 file:// 离线模式：内置样例数据演示完整检索→证据→trace 流程。';
+  }
+})();
+</script>
+</body>
+</html>

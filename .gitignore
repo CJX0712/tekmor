@@ -1,0 +1,24 @@
+# 虚拟环境
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 本地数据 / 运行时产物
+tekmor.db
+*.db
+*.db-journal
+
+# 模型缓存（由 modelhub 管理，不入库）
+models/
+~/.tekmor/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+
+# 测试缓存
+.pytest_cache/
+htmlcov/
