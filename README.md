@@ -1,5 +1,11 @@
 # Tekmor · 本地优先的证据锚定知识库
 
+<p align="center">
+  <a href="https://github.com/CJX0712/tekmor/actions/workflows/ci.yml"><img src="https://github.com/CJX0712/tekmor/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://github.com/CJX0712/tekmor/releases"><img src="https://img.shields.io/github/v/release/CJX0712/tekmor?sort=semver" alt="release"></a>
+  <img src="https://img.shields.io/badge/author-%E6%99%A8%E6%98%9F-1f6feb" alt="author">
+</p>
+
 > 作者：晨星 ｜ 本地优先 / 端到端可验证 / CPU-only / 零出站
 > 古希腊语 τέκμωρ = 确证 / 凭证。与 aetheros 同源品牌家族；aetheros 仅作只读参考源。
 
